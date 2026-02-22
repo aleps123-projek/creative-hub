@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Web Simple Keren</title>
+  <title>Web CREATIVE HUB</title>
 
   <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
@@ -55,18 +55,104 @@
       text-align: justify;
     }
 
-    /* Box menu */
-    .menu {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.menu-box {
+  display: flex;
+  gap: 16px;
+  padding: 22px;        /* dari 15 → 22 */
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: 5px 5px 0 #000;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+    .menu-box:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0 #000;
     }
 
-    .menu-box {
-      display: flex;
-      gap: 12px;
-      padding: 15px;
-      background: #fff;
+.menu-box img {
+  width: 72px;     /* lebih berasa */
+  height: 72px;
+  object-fit: cover;
+  border: 2px solid #000;
+}
+
+    .menu-text h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .menu-text p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: #333;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="main-box">
+    <div class="title">CREATIVE HUB</div>
+
+    <div class="top-content">
+      <div class="top-text">Halo 👋,   Di website kecil ini, kamu bisa melihat beberapa hasil karya saya, termasuk web portofolio dan web rakit PC buatan saya.  
+Selain itu, kamu juga bisa membeli model 3D yang saya jual di Lynk.id dengan harga terjangkau.
+      </div>
+    </div>
+
+    <div class="menu">
+      <div class="menu-box" onclick="goLink('https://aleps123-projek.github.io/web-portofolio/')">
+        <img src="1.jpg" alt="">
+        <div class="menu-text">
+          <h3>WEB PORTOFOLIO INDENTITAS</h3>
+          <p>web kecil yang menampilkan identitas,hasil karya,keahlian,dan kontak.</p>
+        </div>
+      </div>
+
+      <div class="menu-box" onclick="goLink('https://rakitpcmu.web.id')">
+        <img src="ss.jpg" alt="">
+        <div class="menu-text">
+          <h3>WEB RAKITPCMU</h3>
+          <p>web yang cocok untuk kamu belajar merakit pc dengan kompatibilitas yang sudah di filter.</p>
+        </div>
+      </div>
+      
+          <div class="menu">
+      <div class="menu-box" onclick="link lynkid">
+        <img src="modeling3.jpg" alt="">
+        <div class="menu-text">
+          <h3>BELI PRODUK DIGITAL</h3>
+          <p>beli produk digital mu disini,model 3d untuk animasi,model nya detail dengan size kecil,cocok untuk device entry level.</p>
+        </div>
+      </div>
+
+      <div class="menu-box" onclick="linksaweria">
+        <img src="koin.jpg" alt="">
+        <div class="menu-text">
+          <h3>SAWERIA</h3>
+          <p>donasi kecil untuk animator agar lebih semangat,nilai kecil pun akan tetap berharga🫰.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function goLink(url) {
+      window.location.href = url;
+    }
+  </script>
+
+</body>
+</html>      background: #fff;
       border: 2px solid #000;
       box-shadow: 4px 4px 0 #000;
       cursor: pointer;
