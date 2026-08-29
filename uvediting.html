@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UV Face Editor</title>
+<style>
+  :root{
+    --bg-0:#1b1b1e;
+    --bg-1:#232326;
+    --bg-2:#2c2c30;
+    --line:#3a3a3f;
+    --text-0:#eceae6;
+    --text-1:#a8a6a1;
+    --accent:#e8823a;
+    --accent-dim:#5a3d24;
+    --ok:#6fae7a;
+    --mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg-0);color:var(--text-0);font-family:var(--sans);height:100%;overflow:hidden;}
+  #app{display:flex;flex-direction:column;height:100vh;min-height:520px;}
+
+  header{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:10px 14px;background:var(--bg-1);border-bottom:1px solid var(--line);
+    font-size:13px;
+  }
+  header h1{font-size:14px;font-weight:600;margin:0 14px 0 0;letter-spacing:.02em;color:var(--text-0);}
+  header h1 span{color:var(--accent);}
+  .btn{
+    background:var(--bg-2);color:var(--text-0);border:1px solid var(--line);
+    padding:7px 12px;border-radius:6px;font-size:12.5px;cursor:pointer;font-family:var(--sans);
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  .btn:hover{border-color:#55555c;background:#313136;}
+  .btn:active{background:#26262a;}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#1b1204;font-weight:600;}
+  .btn.primary:hover{background:#f2924e;}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn.small{padding:5px 9px;font-size:11.5px;}
+  #fileInput{display:none;}
+  .spacer{flex:1;}
+  .hint{color:var(--text-1);font-size:11.5px;}
+
+  main{flex:1;display:flex;min-height:0;}
+  .pane{flex:1;position:relative;display:flex;flex-direction:column;min-width:0;}
+  .pane + .pane{border-left:1px solid var(--line);}
+  .pane-label{
+    position:absolute;top:8px;left:10px;z-index:5;font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--text-1);font-family:var(--mono);pointer-events:none;
+  }
+  .pane canvas{flex:1;display:block;width:100%;height:100%;touch-action:none;cursor:crosshair;}
+  #viewport3d{cursor:grab;}
+  #viewport3d:active{cursor:grabbing;}
+
+  #uvToolbar{
+    position:absolute;top:6px;right:8px;z-index:5;display:flex;gap:4px;
+  }
+
+  #emptyState{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:10px;color:var(--text-1);text-align:center;padding:20px;
+  }
+  #emptyState .big{font-size:15px;color:var(--text-0);}
+  #emptyState .small{font-size:12px;max-width:340px;line-height:1.5;}
+
+  footer{
+    padding:6px 14px;background:var(--bg-1);border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;color:var(--text-1);display:flex;gap:18px;
+  }
+  footer b{color:var(--text-0);font-weight:600;}
+
+  ::selection{background:var(--accent-dim);}
+
+  @media (max-width:760px){
+    main{flex-direction:column;}
+    .pane + .pane{border-left:none;border-top:1px solid var(--line);}
+    header h1{width:100%;margin-bottom:2px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>UV<span>/</span>Face Editor</h1>
+    <button class="btn primary" id="loadBtn">Buka file .OBJ</button>
+    <input type="file" id="fileInput" accept=".obj">
+    <button class="btn" id="downloadBtn" disabled>Unduh .OBJ</button>
+    <div class="spacer"></div>
+    <button class="btn small" id="selectAllBtn" disabled>Pilih semua</button>
+    <button class="btn small" id="deselectBtn" disabled>Batal pilih</button>
+    <button class="btn small" id="resetSelBtn" disabled>Reset UV terpilih</button>
+    <button class="btn small" id="resetAllBtn" disabled>Reset semua UV</button>
+    <span class="hint" id="statusHint">Belum ada mesh dimuat</span>
+  </header>
+  <main>
+    <div class="pane">
+      <div class="pane-label">Pratinjau 3D — checker UV</div>
+      <canvas id="viewport3d"></canvas>
+    </div>
+    <div class="pane">
+      <div class="pane-label">Editor UV — seret untuk memindah, tarik gagang untuk skala/rotasi</div>
+      <div id="uvToolbar">
+        <button class="btn small" id="zoomOutBtn">−</button>
+        <button class="btn small" id="zoomInBtn">+</button>
+      </div>
+      <canvas id="uvCanvas"></canvas>
+      <div id="emptyState">
+        <div class="big">Belum ada objek</div>
+        <div class="small">Muat file .obj untuk mulai mengedit UV per-face, seperti UV Editor di Blender. Klik face pada layout UV untuk memilihnya, seret untuk memindah, gunakan gagang kotak untuk skala dan gagang bulat untuk memutar.</div>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <span>Face: <b id="statFaces">0</b></span>
+    <span>Vertex: <b id="statVerts">0</b></span>
+    <span>Terpilih: <b id="statSelected">0</b> face</span>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================= STATE ============================= */
+let mesh = null;          // {positions, normals, uvsOriginal, uvs, faces, cornerUVs, originalLines}
+let selected = new Set(); // face indices
+let uvView = { minU:-0.5, minV:-0.5, span:2.0, zoom:1, panX:0, panY:0 };
+
+/* ============================= OBJ PARSING ============================= */
+function resolveIndex(idx, count){
+  if(idx > 0) return idx - 1;
+  if(idx < 0) return count + idx;
+  return null;
+}
+
+function parseOBJ(text){
+  const positions = [], normals = [], uvsOriginal = [], faces = [];
+  const lines = text.split(/\r?\n/);
+  for(const raw of lines){
+    const line = raw.trim();
+    if(!line || line.startsWith('#')) continue;
+    const parts = line.split(/\s+/);
+    const tag = parts[0];
+    if(tag === 'v'){
+      positions.push(parts.slice(1,4).map(Number));
+    } else if(tag === 'vt'){
+      uvsOriginal.push(parts.slice(1,3).map(Number));
+    } else if(tag === 'vn'){
+      normals.push(parts.slice(1,4).map(Number));
+    } else if(tag === 'f'){
+      const corners = parts.slice(1).map(tok=>{
+        const seg = tok.split('/');
+        const vi = seg[0] !== undefined && seg[0] !== '' ? resolveIndex(parseInt(seg[0],10), positions.length) : null;
+        const vti = seg[1] !== undefined && seg[1] !== '' ? resolveIndex(parseInt(seg[1],10), uvsOriginal.length) : null;
+        const vni = seg[2] !== undefined && seg[2] !== '' ? resolveIndex(parseInt(seg[2],10), normals.length) : null;
+        return {v:vi, vt:vti, vn:vni};
+      }).filter(c=>c.v !== null);
+      if(corners.length >= 3) faces.push(corners);
+    }
+  }
+  if(positions.length === 0) throw new Error('Tidak ada data vertex (v) yang ditemukan di file ini.');
+  if(faces.length === 0) throw new Error('Tidak ada data face (f) yang ditemukan di file ini.');
+  return {positions, normals, uvsOriginal, faces, originalLines: lines};
+}
+
+// give every face-corner its own independent UV slot so each face can be
+// positioned / scaled / rotated in UV space without dragging its neighbours along
+function buildIndependentUVs(parsed){
+  const uvs = [];
+  const cornerUVs = [];
+  parsed.faces.forEach((face, fi)=>{
+    const idxs = [];
+    const n = face.length;
+    face.forEach((corner, ci)=>{
+      let uv;
+      if(corner.vt !== null && parsed.uvsOriginal[corner.vt]){
+        uv = parsed.uvsOriginal[corner.vt].slice(0,2);
+      } else {
+        // fallback: simple fan layout inside the unit square so it's still visible/editable
+        const ang = (ci / n) * Math.PI * 2;
+        uv = [0.5 + Math.cos(ang)*0.4, 0.5 + Math.sin(ang)*0.4];
+      }
+      uvs.push([uv[0], uv[1]]);
+      idxs.push(uvs.length - 1);
+    });
+    cornerUVs.push(idxs);
+  });
+  return {uvs, cornerUVs};
+}
+
+function loadOBJText(text){
+  const parsed = parseOBJ(text);
+  const {uvs, cornerUVs} = buildIndependentUVs(parsed);
+  mesh = {
+    positions: parsed.positions,
+    normals: parsed.normals,
+    faces: parsed.faces,
+    cornerUVs,
+    uvs,
+    uvsOriginal: uvs.map(p=>p.slice()),
+    originalLines: parsed.originalLines
+  };
+  selected = new Set();
+  fitUVView();
+  buildThreeMesh();
+  updateUI();
+  document.getElementById('emptyState').style.display = 'none';
+}
+
+/* ============================= OBJ EXPORT ============================= */
+function generateOBJ(){
+  const out = [];
+  let faceIdx = 0;
+  let vtWritten = false;
+  const writeVT = ()=>{
+    mesh.uvs.forEach(uv=>{
+      out.push('vt ' + uv[0].toFixed(6) + ' ' + uv[1].toFixed(6));
+    });
+    vtWritten = true;
+  };
+  for(const raw of mesh.originalLines){
+    const line = raw.trim();
+    if(!line || line.startsWith('#')){ continue; }
+    const parts = line.split(/\s+/);
+    const tag = parts[0];
+    if(tag === 'vt'){
+      continue; // dropped, replaced with new independent UVs
+    } else if(tag === 'f'){
+      if(!vtWritten) writeVT();
+      const face = mesh.faces[faceIdx];
+      const idxs = mesh.cornerUVs[faceIdx];
+      const tokens = face.map((c, ci)=>{
+        const vPart = (c.v+1);
+        const vtPart = (idxs[ci]+1);
+        if(c.vn !== null){
+          return vPart + '/' + vtPart + '/' + (c.vn+1);
+        }
+        return vPart + '/' + vtPart;
+      });
+      out.push('f ' + tokens.join(' '));
+      faceIdx++;
+    } else {
+      out.push(raw);
+    }
+  }
+  if(!vtWritten) writeVT(); // file had no faces after vt (shouldn't happen, safety net)
+  return out.join('\n') + '\n';
+}
+
+function downloadOBJ(){
+  if(!mesh) return;
+  const text = generateOBJ();
+  const blob = new Blob([text], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'edited_uv.obj';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ============================= UV 2D EDITOR ============================= */
+const uvCanvas = document.getElementById('uvCanvas');
+const uvCtx = uvCanvas.getContext('2d');
+
+function resizeCanvases(){
+  [uvCanvas, document.getElementById('viewport3d')].forEach(c=>{
+    const rect = c.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.max(1, Math.round(rect.width * dpr));
+    c.height = Math.max(1, Math.round(rect.height * dpr));
+  });
+  if(renderer){
+    const rect = document.getElementById('viewport3d').getBoundingClientRect();
+    renderer.setSize(rect.width, rect.height, false);
+    camera.aspect = rect.width / Math.max(1,rect.height);
+    camera.updateProjectionMatrix();
+  }
+  drawUV();
+  render3D();
+}
+window.addEventListener('resize', resizeCanvases);
+
+function fitUVView(){
+  uvView = {minU:-0.5, minV:-0.5, span:2.0, zoom:1, panX:0, panY:0};
+}
+
+function uvToCanvas(u, v){
+  const dpr = window.devicePixelRatio || 1;
+  const w = uvCanvas.width, h = uvCanvas.height;
+  const size = Math.min(w,h);
+  const span = uvView.span / uvView.zoom;
+  const minU = uvView.minU + uvView.panX;
+  const minV = uvView.minV + uvView.panY;
+  const x = ((u - minU) / span) * size + (w-size)/2;
+  const y = h - (((v - minV) / span) * size + (h-size)/2);
+  return [x, y];
+}
+function canvasToUV(x, y){
+  const w = uvCanvas.width, h = uvCanvas.height;
+  const size = Math.min(w,h);
+  const span = uvView.span / uvView.zoom;
+  const minU = uvView.minU + uvView.panX;
+  const minV = uvView.minV + uvView.panY;
+  const u = ((x - (w-size)/2) / size) * span + minU;
+  const v = ((h - y - (h-size)/2) / size) * span + minV;
+  return [u, v];
+}
+
+function faceCentroidUV(fi){
+  const idxs = mesh.cornerUVs[fi];
+  let su=0, sv=0;
+  idxs.forEach(i=>{ su += mesh.uvs[i][0]; sv += mesh.uvs[i][1]; });
+  return [su/idxs.length, sv/idxs.length];
+}
+
+function selectionBBox(){
+  let minU=Infinity, minV=Infinity, maxU=-Infinity, maxV=-Infinity;
+  selected.forEach(fi=>{
+    mesh.cornerUVs[fi].forEach(i=>{
+      const [u,v] = mesh.uvs[i];
+      if(u<minU)minU=u; if(u>maxU)maxU=u;
+      if(v<minV)minV=v; if(v>maxV)maxV=v;
+    });
+  });
+  if(minU===Infinity) return null;
+  return {minU,minV,maxU,maxV,cx:(minU+maxU)/2, cy:(minV+maxV)/2};
+}
+
+function drawUV(){
+  const w = uvCanvas.width, h = uvCanvas.height;
+  uvCtx.clearRect(0,0,w,h);
+  uvCtx.fillStyle = '#1f1f22';
+  uvCtx.fillRect(0,0,w,h);
+  if(!mesh) return;
+
+  // checker inside unit square 0..1
+  const steps = 8;
+  for(let i=0;i<steps;i++){
+    for(let j=0;j<steps;j++){
+      const isDark = (i+j)%2===0;
+      uvCtx.fillStyle = isDark ? '#2a2a2e' : '#313135';
+      const [x0,y0] = uvToCanvas(i/steps, (j+1)/steps);
+      const [x1,y1] = uvToCanvas((i+1)/steps, j/steps);
+      uvCtx.fillRect(x0, y0, x1-x0, y1-y0);
+    }
+  }
+  // unit square border
+  const [ux0,uy0] = uvToCanvas(0,1);
+  const [ux1,uy1] = uvToCanvas(1,0);
+  uvCtx.strokeStyle = '#6b6b70';
+  uvCtx.lineWidth = 1.5;
+  uvCtx.strokeRect(ux0, uy0, ux1-ux0, uy1-uy0);
+
+  // faces
+  mesh.faces.forEach((face, fi)=>{
+    const idxs = mesh.cornerUVs[fi];
+    uvCtx.beginPath();
+    idxs.forEach((ci, k)=>{
+      const [x,y] = uvToCanvas(mesh.uvs[ci][0], mesh.uvs[ci][1]);
+      if(k===0) uvCtx.moveTo(x,y); else uvCtx.lineTo(x,y);
+    });
+    uvCtx.closePath();
+    const isSel = selected.has(fi);
+    uvCtx.fillStyle = isSel ? 'rgba(232,130,58,0.35)' : 'rgba(140,180,255,0.06)';
+    uvCtx.fill();
+    uvCtx.strokeStyle = isSel ? '#e8823a' : '#7c8894';
+    uvCtx.lineWidth = isSel ? 2 : 1;
+    uvCtx.stroke();
+  });
+
+  // handles for selection
+  const bbox = selectionBBox();
+  if(bbox){
+    const corners = [[bbox.minU,bbox.minV],[bbox.maxU,bbox.minV],[bbox.maxU,bbox.maxV],[bbox.minU,bbox.maxV]];
+    uvCtx.strokeStyle = '#e8823a';
+    uvCtx.lineWidth = 1;
+    uvCtx.setLineDash([4,4]);
+    uvCtx.beginPath();
+    corners.forEach(([u,v],k)=>{
+      const [x,y]=uvToCanvas(u,v);
+      if(k===0) uvCtx.moveTo(x,y); else uvCtx.lineTo(x,y);
+    });
+    uvCtx.closePath();
+    uvCtx.stroke();
+    uvCtx.setLineDash([]);
+
+    const hs = 9; // handle size px
+    uvCtx.fillStyle = '#e8823a';
+    corners.forEach(([u,v])=>{
+      const [x,y] = uvToCanvas(u,v);
+      uvCtx.fillRect(x-hs/2, y-hs/2, hs, hs);
+    });
+
+    // rotate handle above top-center
+    const [cx,cyTop] = uvToCanvas(bbox.cx, bbox.maxV);
+    const rHandle = [cx, cyTop - 34];
+    uvCtx.strokeStyle = '#e8823a';
+    uvCtx.beginPath();
+    uvCtx.moveTo(cx, cyTop);
+    uvCtx.lineTo(rHandle[0], rHandle[1]);
+    uvCtx.stroke();
+    uvCtx.beginPath();
+    uvCtx.arc(rHandle[0], rHandle[1], 7, 0, Math.PI*2);
+    uvCtx.fillStyle = '#e8823a';
+    uvCtx.fill();
+  }
+
+  // box-select rectangle
+  if(dragMode === 'boxselect' && boxRect){
+    uvCtx.strokeStyle = '#e8823a';
+    uvCtx.fillStyle = 'rgba(232,130,58,0.12)';
+    uvCtx.setLineDash([3,3]);
+    uvCtx.strokeRect(boxRect.x, boxRect.y, boxRect.w, boxRect.h);
+    uvCtx.fillRect(boxRect.x, boxRect.y, boxRect.w, boxRect.h);
+    uvCtx.setLineDash([]);
+  }
+}
+
+/* ---- hit testing ---- */
+function pointInPolygon(px, py, pts){
+  let inside = false;
+  for(let i=0, j=pts.length-1; i<pts.length; j=i++){
+    const xi=pts[i][0], yi=pts[i][1], xj=pts[j][0], yj=pts[j][1];
+    const intersect = ((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi);
+    if(intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function hitTestFace(px, py){
+  for(let fi = mesh.faces.length-1; fi >= 0; fi--){
+    const pts = mesh.cornerUVs[fi].map(ci=>uvToCanvas(mesh.uvs[ci][0], mesh.uvs[ci][1]));
+    if(pointInPolygon(px, py, pts)) return fi;
+  }
+  return null;
+}
+
+function hitTestHandle(px, py){
+  const bbox = selectionBBox();
+  if(!bbox) return null;
+  const corners = [
+    ['tl',bbox.minU,bbox.maxV],['tr',bbox.maxU,bbox.maxV],
+    ['br',bbox.maxU,bbox.minV],['bl',bbox.minU,bbox.minV]
+  ];
+  for(const [name,u,v] of corners){
+    const [x,y] = uvToCanvas(u,v);
+    if(Math.hypot(px-x, py-y) < 12) return {type:'scale', name};
+  }
+  const [cx,cyTop] = uvToCanvas(bbox.cx, bbox.maxV);
+  const rHandle = [cx, cyTop-34];
+  if(Math.hypot(px-rHandle[0], py-rHandle[1]) < 12) return {type:'rotate'};
+  return null;
+}
+
+/* ---- interaction state ---- */
+let dragMode = null;
+let dragStartPx = null;
+let dragSnapshot = null; // Map(uvIndex -> [u,v])
+let dragCenter = null;
+let dragStartDist = null;
+let dragStartAngle = null;
+let boxRect = null;
+let boxAdditive = false;
+
+function snapshotSelectedUVs(){
+  const map = new Map();
+  selected.forEach(fi=>{
+    mesh.cornerUVs[fi].forEach(idx=>{
+      map.set(idx, mesh.uvs[idx].slice());
+    });
+  });
+  return map;
+}
+
+function getEventPos(e){
+  const rect = uvCanvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  return [cx*dpr, cy*dpr];
+}
+
+uvCanvas.addEventListener('pointerdown', (e)=>{
+  if(!mesh) return;
+  uvCanvas.setPointerCapture(e.pointerId);
+  const [px,py] = getEventPos(e);
+  dragStartPx = [px,py];
+
+  if(selected.size > 0){
+    const handle = hitTestHandle(px,py);
+    if(handle){
+      const bbox = selectionBBox();
+      dragSnapshot = snapshotSelectedUVs();
+      dragCenter = [bbox.cx, bbox.cy];
+      if(handle.type === 'scale'){
+        dragMode = 'scale';
+        const [hx,hy] = uvToCanvas(bbox.cx, bbox.cy);
+        dragStartDist = Math.max(1, Math.hypot(px-hx, py-hy));
+      } else {
+        dragMode = 'rotate';
+        const [hx,hy] = uvToCanvas(bbox.cx, bbox.cy);
+        dragStartAngle = Math.atan2(py-hy, px-hx);
+      }
+      return;
+    }
+  }
+
+  const hitFace = hitTestFace(px,py);
+  if(hitFace !== null){
+    if(e.shiftKey){
+      if(selected.has(hitFace)) selected.delete(hitFace); else selected.add(hitFace);
+    } else if(!selected.has(hitFace)){
+      selected = new Set([hitFace]);
+    }
+    if(selected.has(hitFace)){
+      dragMode = 'translate';
+      dragSnapshot = snapshotSelectedUVs();
+    }
+  } else {
+    if(!e.shiftKey) selected.clear();
+    dragMode = 'boxselect';
+    boxAdditive = e.shiftKey;
+    boxRect = {x:px,y:py,w:0,h:0};
+  }
+  updateUI();
+  drawUV();
+});
+
+uvCanvas.addEventListener('pointermove', (e)=>{
+  if(!mesh || !dragMode) return;
+  const [px,py] = getEventPos(e);
+
+  if(dragMode === 'translate'){
+    const [u0,v0] = canvasToUV(dragStartPx[0], dragStartPx[1]);
+    const [u1,v1] = canvasToUV(px, py);
+    const du = u1-u0, dv = v1-v0;
+    dragSnapshot.forEach((val, idx)=>{
+      mesh.uvs[idx][0] = val[0] + du;
+      mesh.uvs[idx][1] = val[1] + dv;
+    });
+  } else if(dragMode === 'scale'){
+    const [hx,hy] = uvToCanvas(dragCenter[0], dragCenter[1]);
+    const dist = Math.max(1, Math.hypot(px-hx, py-hy));
+    const factor = dist / dragStartDist;
+    dragSnapshot.forEach((val, idx)=>{
+      mesh.uvs[idx][0] = dragCenter[0] + (val[0]-dragCenter[0]) * factor;
+      mesh.uvs[idx][1] = dragCenter[1] + (val[1]-dragCenter[1]) * factor;
+    });
+  } else if(dragMode === 'rotate'){
+    const [hx,hy] = uvToCanvas(dragCenter[0], dragCenter[1]);
+    const ang = Math.atan2(py-hy, px-hx);
+    const delta = -(ang - dragStartAngle); // screen y flipped vs uv v
+    const cos = Math.cos(delta), sin = Math.sin(delta);
+    dragSnapshot.forEach((val, idx)=>{
+      const du = val[0]-dragCenter[0], dv = val[1]-dragCenter[1];
+      mesh.uvs[idx][0] = dragCenter[0] + du*cos - dv*sin;
+      mesh.uvs[idx][1] = dragCenter[1] + du*sin + dv*cos;
+    });
+  } else if(dragMode === 'boxselect'){
+    boxRect = {x:Math.min(px,dragStartPx[0]), y:Math.min(py,dragStartPx[1]),
+               w:Math.abs(px-dragStartPx[0]), h:Math.abs(py-dragStartPx[1])};
+  }
+  drawUV();
+  updateThreeUVAttribute();
+  render3D();
+});
+
+function finishDrag(){
+  if(dragMode === 'boxselect' && boxRect){
+    const newSel = boxAdditive ? new Set(selected) : new Set();
+    mesh.faces.forEach((face, fi)=>{
+      const [cx,cy] = faceCentroidUV(fi);
+      const [x,y] = uvToCanvas(cx,cy);
+      if(x>=boxRect.x && x<=boxRect.x+boxRect.w && y>=boxRect.y && y<=boxRect.y+boxRect.h){
+        newSel.add(fi);
+      }
+    });
+    selected = newSel;
+  }
+  dragMode = null;
+  boxRect = null;
+  dragSnapshot = null;
+  updateUI();
+  drawUV();
+}
+uvCanvas.addEventListener('pointerup', finishDrag);
+uvCanvas.addEventListener('pointercancel', finishDrag);
+
+uvCanvas.addEventListener('wheel', (e)=>{
+  if(!mesh) return;
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  uvView.zoom = Math.min(20, Math.max(0.2, uvView.zoom * factor));
+  drawUV();
+}, {passive:false});
+
+document.getElementById('zoomInBtn').onclick = ()=>{ uvView.zoom = Math.min(20, uvView.zoom*1.25); drawUV(); };
+document.getElementById('zoomOutBtn').onclick = ()=>{ uvView.zoom = Math.max(0.2, uvView.zoom/1.25); drawUV(); };
+
+/* ============================= 3D VIEWPORT (three.js) ============================= */
+let renderer, scene, camera, threeMesh, threeOverlay;
+let orbit = {theta: Math.PI/4, phi: Math.PI/3.2, radius: 3, target: new THREE.Vector3(0,0,0)};
+
+function initThree(){
+  const canvas = document.getElementById('viewport3d');
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true});
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1b1b1e);
+  camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+  updateCameraFromOrbit();
+
+  let dragging = false, lastX=0, lastY=0;
+  canvas.addEventListener('pointerdown', (e)=>{
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!dragging) return;
+    const dx = e.clientX-lastX, dy = e.clientY-lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    orbit.theta -= dx*0.008;
+    orbit.phi = Math.min(Math.PI-0.05, Math.max(0.05, orbit.phi - dy*0.008));
+    updateCameraFromOrbit();
+    render3D();
+  });
+  canvas.addEventListener('pointerup', ()=>dragging=false);
+  canvas.addEventListener('pointercancel', ()=>dragging=false);
+  canvas.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    orbit.radius = Math.min(50, Math.max(0.2, orbit.radius * (e.deltaY<0?0.9:1.1)));
+    updateCameraFromOrbit();
+    render3D();
+  }, {passive:false});
+}
+
+function updateCameraFromOrbit(){
+  const {theta, phi, radius, target} = orbit;
+  camera.position.set(
+    target.x + radius*Math.sin(phi)*Math.cos(theta),
+    target.y + radius*Math.cos(phi),
+    target.z + radius*Math.sin(phi)*Math.sin(theta)
+  );
+  camera.lookAt(target);
+}
+
+function makeCheckerTexture(){
+  const size = 512, n = 8;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const cell = size/n;
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+    ctx.fillStyle = (i+j)%2===0 ? '#d8722f' : '#e9e4da';
+    ctx.fillRect(i*cell, j*cell, cell, cell);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let renderCornerRefs = []; // [{fi, ci}] in geometry vertex order
+
+function buildThreeMesh(){
+  if(threeMesh){ scene.remove(threeMesh); threeMesh.geometry.dispose(); }
+  if(threeOverlay){ scene.remove(threeOverlay); threeOverlay.geometry.dispose(); }
+  scene.clear();
+
+  const positions = [];
+  const uvsArr = [];
+  renderCornerRefs = [];
+
+  mesh.faces.forEach((face, fi)=>{
+    const n = face.length;
+    for(let i=1;i<n-1;i++){
+      const triCorners = [0,i,i+1];
+      triCorners.forEach(ci=>{
+        const p = mesh.positions[face[ci].v];
+        positions.push(p[0], p[1], p[2]);
+        renderCornerRefs.push({fi, ci});
+      });
+    }
+  });
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(positions.length/3*2), 2));
+  geo.computeVertexNormals();
+
+  const tex = makeCheckerTexture();
+  const mat = new THREE.MeshBasicMaterial({map: tex, side: THREE.DoubleSide});
+  threeMesh = new THREE.Mesh(geo, mat);
+  scene.add(threeMesh);
+
+  const wireGeo = new THREE.WireframeGeometry(geo);
+  const wire = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({color:0x000000, transparent:true, opacity:0.15}));
+  scene.add(wire);
+
+  // frame camera to mesh bounds
+  geo.computeBoundingSphere();
+  const bs = geo.boundingSphere;
+  orbit.target.copy(bs.center);
+  orbit.radius = Math.max(0.4, bs.radius * 2.4);
+  updateCameraFromOrbit();
+
+  updateThreeUVAttribute();
+  updateOverlay();
+}
+
+function updateThreeUVAttribute(){
+  if(!threeMesh) return;
+  const uvAttr = threeMesh.geometry.getAttribute('uv');
+  for(let k=0;k<renderCornerRefs.length;k++){
+    const {fi,ci} = renderCornerRefs[k];
+    const uvIdx = mesh.cornerUVs[fi][ci];
+    const uv = mesh.uvs[uvIdx];
+    uvAttr.setXY(k, uv[0], uv[1]);
+  }
+  uvAttr.needsUpdate = true;
+}
+
+function updateOverlay(){
+  if(threeOverlay){ scene.remove(threeOverlay); threeOverlay.geometry.dispose(); }
+  if(selected.size === 0) return;
+  const positions = [];
+  mesh.faces.forEach((face, fi)=>{
+    if(!selected.has(fi)) return;
+    const n = face.length;
+    for(let i=1;i<n-1;i++){
+      [0,i,i+1].forEach(ci=>{
+        const p = mesh.positions[face[ci].v];
+        positions.push(p[0], p[1], p[2]);
+      });
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const mat = new THREE.MeshBasicMaterial({color:0xe8823a, transparent:true, opacity:0.45, side:THREE.DoubleSide, depthTest:true, polygonOffset:true, polygonOffsetFactor:-1});
+  threeOverlay = new THREE.Mesh(geo, mat);
+  scene.add(threeOverlay);
+}
+
+function render3D(){
+  if(!renderer || !scene || !camera) return;
+  renderer.render(scene, camera);
+}
+function animate(){
+  requestAnimationFrame(animate);
+  render3D();
+}
+
+/* ============================= UI WIRING ============================= */
+function updateUI(){
+  const has = !!mesh;
+  document.getElementById('downloadBtn').disabled = !has;
+  document.getElementById('selectAllBtn').disabled = !has;
+  document.getElementById('deselectBtn').disabled = !has;
+  document.getElementById('resetSelBtn').disabled = !has || selected.size===0;
+  document.getElementById('resetAllBtn').disabled = !has;
+  document.getElementById('statFaces').textContent = has ? mesh.faces.length : 0;
+  document.getElementById('statVerts').textContent = has ? mesh.positions.length : 0;
+  document.getElementById('statSelected').textContent = selected.size;
+  document.getElementById('statusHint').textContent = has ? 'Klik face untuk memilih • Shift+klik untuk multi-pilih • seret area kosong untuk box-select' : 'Belum ada mesh dimuat';
+  updateOverlay();
+}
+
+document.getElementById('loadBtn').onclick = ()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      loadOBJText(reader.result);
+    }catch(err){
+      alert('Gagal membaca file OBJ: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('downloadBtn').onclick = downloadOBJ;
+document.getElementById('selectAllBtn').onclick = ()=>{
+  selected = new Set(mesh.faces.map((_,i)=>i));
+  updateUI(); drawUV(); render3D();
+};
+document.getElementById('deselectBtn').onclick = ()=>{
+  selected.clear(); updateUI(); drawUV(); render3D();
+};
+document.getElementById('resetSelBtn').onclick = ()=>{
+  selected.forEach(fi=>{
+    mesh.cornerUVs[fi].forEach(idx=>{
+      mesh.uvs[idx][0] = mesh.uvsOriginal[idx][0];
+      mesh.uvs[idx][1] = mesh.uvsOriginal[idx][1];
+    });
+  });
+  drawUV(); updateThreeUVAttribute(); render3D();
+};
+document.getElementById('resetAllBtn').onclick = ()=>{
+  mesh.uvs.forEach((uv,i)=>{ uv[0]=mesh.uvsOriginal[i][0]; uv[1]=mesh.uvsOriginal[i][1]; });
+  drawUV(); updateThreeUVAttribute(); render3D();
+};
+
+/* ============================= INIT ============================= */
+initThree();
+resizeCanvases();
+animate();
+</script>
+</body>
+</html>
